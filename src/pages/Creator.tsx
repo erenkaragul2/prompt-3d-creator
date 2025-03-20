@@ -14,6 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import { supabase } from '@/integrations/supabase/client';
 
 const Creator = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -39,17 +40,53 @@ const Creator = () => {
         throw new Error('Failed to use credits');
       }
 
-      // This is a placeholder for the actual API call to Google Gemini
-      // In a real implementation, this would call your backend which integrates with Gemini
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Simulate a response - in a real app, this would be the response from Gemini
-      // For now, we're using a placeholder image
-      setGeneratedImage('https://picsum.photos/800/600');
+      // Call our Supabase Edge Function to generate the mockup
+      const { data, error } = await supabase.functions.invoke('generate-mockup', {
+        body: { prompt, settings }
+      });
+
+      if (error) {
+        throw new Error(`Error calling generate-mockup: ${error.message}`);
+      }
+
+      if (!data || !data.imageUrl) {
+        throw new Error('No image URL returned from the API');
+      }
+
+      setGeneratedImage(data.imageUrl);
       toast.success('3D mockup generated successfully!');
+      
+      // Log the enhanced prompt used for generation
+      console.log('Enhanced prompt used:', data.enhancedPrompt);
+      
     } catch (error) {
       console.error('Error generating image:', error);
       toast.error('Failed to generate mockup. Please try again.');
+      
+      // Try to restore the credit if generation failed
+      if (profile) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ credits: profile.credits + 1 })
+            .eq('id', profile.id);
+            
+          // Refresh profile to update credits display
+          if (profile.id) {
+            const { data } = await supabase
+              .from('profiles')
+              .select('id, username, credits')
+              .eq('id', profile.id)
+              .single();
+              
+            if (data) {
+              toast.success('Credit has been refunded due to generation error.');
+            }
+          }
+        } catch (refundError) {
+          console.error('Error refunding credit:', refundError);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
