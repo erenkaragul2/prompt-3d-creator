@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 interface PromptInputProps {
   onSubmit: (prompt: string, settings: PromptSettings) => void;
   isLoading: boolean;
+  disabled?: boolean;
 }
 
 export interface PromptSettings {
@@ -24,7 +25,7 @@ export interface PromptSettings {
   colorScheme: 'vibrant' | 'muted' | 'monochrome';
 }
 
-const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
+const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading, disabled = false }) => {
   const [prompt, setPrompt] = useState('');
   const [settings, setSettings] = useState<PromptSettings>({
     detailLevel: 50,
@@ -69,6 +70,8 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
     { value: 'monochrome', label: 'Monochrome' },
   ];
 
+  const isButtonDisabled = isLoading || !prompt.trim() || disabled;
+
   return (
     <div className="w-full glass rounded-lg p-6">
       <form onSubmit={handleSubmit}>
@@ -82,9 +85,15 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="e.g., A modern smartphone displaying a fitness app interface on a wooden desk"
             className="min-h-[100px] resize-none"
-            disabled={isLoading}
+            disabled={isLoading || disabled}
           />
         </div>
+
+        {disabled && (
+          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm">
+            You have no credits left. Please purchase more credits to continue generating mockups.
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2 mb-6">
           <p className="text-xs text-muted-foreground w-full mb-1">Try an example:</p>
@@ -94,7 +103,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
               type="button"
               onClick={() => handleExampleClick(example)}
               className="text-xs bg-secondary text-secondary-foreground px-3 py-1 rounded-full hover:bg-secondary/80 transition-colors"
-              disabled={isLoading}
+              disabled={isLoading || disabled}
             >
               {example.length > 30 ? example.substring(0, 30) + '...' : example}
             </button>
@@ -109,7 +118,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
                   type="button" 
                   variant="outline" 
                   size="sm"
-                  disabled={isLoading}
+                  disabled={isLoading || disabled}
                 >
                   <Settings className="h-4 w-4 mr-2" />
                   Settings
@@ -130,6 +139,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
                       max={100}
                       step={1}
                       onValueChange={(value) => setSettings({...settings, detailLevel: value[0]})}
+                      disabled={disabled}
                     />
                   </div>
                   
@@ -144,6 +154,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
                           size="sm"
                           className="flex-1"
                           onClick={() => setSettings({...settings, stylePreference: option.value as any})}
+                          disabled={disabled}
                         >
                           {option.label}
                         </Button>
@@ -162,6 +173,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
                           size="sm"
                           className="flex-1"
                           onClick={() => setSettings({...settings, colorScheme: option.value as any})}
+                          disabled={disabled}
                         >
                           {option.label}
                         </Button>
@@ -174,7 +186,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
             
             <Popover>
               <PopoverTrigger asChild>
-                <Button type="button" variant="outline" size="sm" disabled={isLoading}>
+                <Button type="button" variant="outline" size="sm" disabled={isLoading || disabled}>
                   <HelpCircle className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
@@ -197,7 +209,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
               variant="outline" 
               size="sm" 
               onClick={handleClear}
-              disabled={isLoading || !prompt}
+              disabled={isLoading || !prompt || disabled}
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -205,7 +217,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading }) => {
           
           <Button 
             type="submit" 
-            disabled={isLoading || !prompt.trim()} 
+            disabled={isButtonDisabled}
             className="min-w-24"
           >
             {isLoading ? (
