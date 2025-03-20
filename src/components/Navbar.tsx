@@ -3,12 +3,20 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, User, LogOut } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
 
 export const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -62,16 +70,34 @@ export const Navbar = () => {
 
         {/* Auth Buttons */}
         <div className="hidden md:flex items-center gap-4">
-          <Link to="/auth?mode=signin">
-            <Button variant="ghost" className="text-sm">
-              Sign In
-            </Button>
-          </Link>
-          <Link to="/auth?mode=signup">
-            <Button variant="default" className="text-sm">
-              Sign Up
-            </Button>
-          </Link>
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                  <User className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => signOut()}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <>
+              <Link to="/auth?mode=signin">
+                <Button variant="ghost" className="text-sm">
+                  Sign In
+                </Button>
+              </Link>
+              <Link to="/auth?mode=signup">
+                <Button variant="default" className="text-sm">
+                  Sign Up
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -107,16 +133,31 @@ export const Navbar = () => {
               </Link>
             ))}
             <div className="flex flex-col gap-3 mt-4 pt-4 border-t">
-              <Link to="/auth?mode=signin" onClick={() => setIsMobileMenuOpen(false)}>
-                <Button variant="ghost" className="w-full text-sm">
-                  Sign In
+              {user ? (
+                <Button 
+                  variant="outline" 
+                  className="w-full text-sm"
+                  onClick={() => {
+                    signOut();
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  Log Out
                 </Button>
-              </Link>
-              <Link to="/auth?mode=signup" onClick={() => setIsMobileMenuOpen(false)}>
-                <Button variant="default" className="w-full text-sm">
-                  Sign Up
-                </Button>
-              </Link>
+              ) : (
+                <>
+                  <Link to="/auth?mode=signin" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Button variant="ghost" className="w-full text-sm">
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link to="/auth?mode=signup" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Button variant="default" className="w-full text-sm">
+                      Sign Up
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </nav>
         </div>

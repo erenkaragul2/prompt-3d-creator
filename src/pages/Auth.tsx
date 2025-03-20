@@ -5,19 +5,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<string>('signin');
+  const { signIn, signUp, isLoading, user } = useAuth();
 
   useEffect(() => {
+    // Redirect if already logged in
+    if (user) {
+      navigate('/creator');
+    }
+    
     // Get mode from URL query params
     const searchParams = new URLSearchParams(location.search);
     const mode = searchParams.get('mode');
@@ -25,54 +30,26 @@ const Auth = () => {
     if (mode === 'signin' || mode === 'signup') {
       setActiveTab(mode);
     }
-  }, [location]);
+  }, [location, user, navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!email || !password) {
-      toast.error('Please fill in all fields');
       return;
     }
     
-    setIsLoading(true);
-    
-    try {
-      // This would be replaced with actual Supabase authentication
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      toast.success('Signed in successfully!');
-      navigate('/creator');
-    } catch (error) {
-      console.error('Error signing in:', error);
-      toast.error('Failed to sign in. Please check your credentials.');
-    } finally {
-      setIsLoading(false);
-    }
+    await signIn(email, password);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!email || !password || !name) {
-      toast.error('Please fill in all fields');
       return;
     }
     
-    setIsLoading(true);
-    
-    try {
-      // This would be replaced with actual Supabase authentication
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      toast.success('Account created successfully!');
-      navigate('/creator');
-    } catch (error) {
-      console.error('Error signing up:', error);
-      toast.error('Failed to create account. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    await signUp(email, password, name);
   };
 
   return (
@@ -127,7 +104,7 @@ const Auth = () => {
                       className="text-xs text-primary hover:underline"
                       onClick={(e) => {
                         e.preventDefault();
-                        toast.info('Password reset functionality would be implemented with Supabase Auth');
+                        // Password reset functionality would be implemented here
                       }}
                     >
                       Forgot password?
