@@ -45,6 +45,27 @@ serve(async (req) => {
     enhancedPrompt += `Don't include any text, just generate the image. Output as detailed, photorealistic render.`;
 
     console.log("Enhanced prompt:", enhancedPrompt);
+    
+    const requestBody = {
+      contents: [
+        {
+          parts: [
+            {
+              text: enhancedPrompt
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        topK: 32,
+        topP: 1,
+        maxOutputTokens: 4096,
+        responseMediaType: "image/png",
+      }
+    };
+    
+    console.log("Request body:", JSON.stringify(requestBody, null, 2));
 
     // Call Gemini API to generate content
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
@@ -52,24 +73,7 @@ serve(async (req) => {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: enhancedPrompt
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.4,
-          topK: 32,
-          topP: 1,
-          maxOutputTokens: 4096,
-          responseMediaType: "image/png",
-        }
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     console.log("Response status:", response.status);
@@ -91,24 +95,37 @@ serve(async (req) => {
       console.log("Response structure:", JSON.stringify(data, null, 2));
       
       // Look for media content in the response
-      if (data.candidates && 
-          data.candidates[0] && 
-          data.candidates[0].content && 
-          data.candidates[0].content.parts) {
+      if (data && data.candidates && data.candidates.length > 0) {
+        const candidate = data.candidates[0];
         
-        const parts = data.candidates[0].content.parts;
-        console.log("Content parts:", JSON.stringify(parts, null, 2));
-        
-        for (const part of parts) {
-          if (part.inlineData && part.inlineData.data) {
-            imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            console.log("Found image data with MIME type:", part.inlineData.mimeType);
-            break;
-          } else if (part.text) {
-            console.log("Found text in response:", part.text);
+        if (candidate && candidate.content && candidate.content.parts) {
+          const parts = candidate.content.parts;
+          console.log("Content parts found:", parts.length);
+          
+          for (const part of parts) {
+            console.log("Examining part:", JSON.stringify(part, null, 2));
+            
+            if (part.inlineData) {
+              console.log("Found inlineData with mimeType:", part.inlineData.mimeType);
+              imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+              break;
+            } else if (part.text) {
+              console.log("Found text content:", part.text);
+            }
           }
+        } else {
+          console.log("No content or parts in the first candidate");
         }
+      } else {
+        console.log("No candidates in response");
       }
+      
+      // If still no image, check if there's a different response format
+      if (!imageUrl && data && data.media) {
+        console.log("Found media field in response");
+        imageUrl = `data:image/png;base64,${data.media}`;
+      }
+      
     } catch (error) {
       console.error("Error extracting image from response:", error);
     }
