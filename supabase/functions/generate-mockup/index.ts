@@ -16,10 +16,11 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, settings } = await req.json();
+    const { prompt, settings, referenceImage } = await req.json();
     
     console.log("Received prompt:", prompt);
     console.log("Received settings:", settings);
+    console.log("Received reference image:", referenceImage ? "Yes" : "No");
 
     // Build the prompt with settings incorporated
     let enhancedPrompt = `Create a photorealistic 3D mockup of the following: ${prompt}. `;
@@ -46,26 +47,73 @@ serve(async (req) => {
 
     console.log("Enhanced prompt:", enhancedPrompt);
     
-    const requestBody = {
-      contents: [
-        {
-          parts: [
-            {
-              text: enhancedPrompt
-            }
-          ]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.4,
-        topK: 32,
-        topP: 1,
-        maxOutputTokens: 4096,
-        responseMediaType: "image/png",
-      }
-    };
+    // Prepare the request body
+    let requestBody = {};
     
-    console.log("Request body:", JSON.stringify(requestBody, null, 2));
+    if (referenceImage) {
+      console.log("Using reference image in the request");
+      
+      // Extract the image data from the base64 string
+      const imageData = referenceImage.split(',')[1];
+      const mimeType = referenceImage.split(';')[0].split(':')[1];
+      
+      requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                text: enhancedPrompt
+              },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: imageData
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 4096,
+          responseMediaType: "image/png",
+        }
+      };
+    } else {
+      requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                text: enhancedPrompt
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 4096,
+          responseMediaType: "image/png",
+        }
+      };
+    }
+    
+    console.log("Request body structure (without image data):", JSON.stringify({
+      ...requestBody,
+      contents: requestBody.contents.map((content: any) => ({
+        ...content,
+        parts: content.parts.map((part: any) => {
+          if (part.inlineData) {
+            return { ...part, inlineData: { ...part.inlineData, data: '[IMAGE_DATA]' } };
+          }
+          return part;
+        })
+      }))
+    }, null, 2));
 
     // Call Gemini API to generate content
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
@@ -91,8 +139,11 @@ serve(async (req) => {
     let imageUrl = null;
     
     try {
-      // Log the full response structure for debugging
-      console.log("Response structure:", JSON.stringify(data, null, 2));
+      // Log the response structure for debugging (without image data)
+      console.log("Response structure keys:", Object.keys(data));
+      if (data.candidates) {
+        console.log("Candidates count:", data.candidates.length);
+      }
       
       // Look for media content in the response
       if (data && data.candidates && data.candidates.length > 0) {
@@ -103,7 +154,7 @@ serve(async (req) => {
           console.log("Content parts found:", parts.length);
           
           for (const part of parts) {
-            console.log("Examining part:", JSON.stringify(part, null, 2));
+            console.log("Examining part type:", part.inlineData ? "inlineData" : part.text ? "text" : "unknown");
             
             if (part.inlineData) {
               console.log("Found inlineData with mimeType:", part.inlineData.mimeType);

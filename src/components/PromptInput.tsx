@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
 import { 
@@ -9,12 +10,15 @@ import {
   Send, 
   Loader2, 
   HelpCircle,
-  RefreshCw
+  RefreshCw,
+  Upload,
+  Image as ImageIcon,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PromptInputProps {
-  onSubmit: (prompt: string, settings: PromptSettings) => void;
+  onSubmit: (prompt: string, settings: PromptSettings, image?: File) => void;
   isLoading: boolean;
   disabled?: boolean;
 }
@@ -32,20 +36,62 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading, disabled
     stylePreference: 'realistic',
     colorScheme: 'vibrant',
   });
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!prompt.trim()) {
-      toast.error('Please enter a prompt');
+    if (!prompt.trim() && !uploadedImage) {
+      toast.error('Please enter a prompt or upload a reference image');
       return;
     }
     
-    onSubmit(prompt, settings);
+    onSubmit(prompt, settings, uploadedImage || undefined);
   };
 
   const handleClear = () => {
     setPrompt('');
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 4 * 1024 * 1024) {
+        toast.error('Image size should be less than 4MB');
+        return;
+      }
+      
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please upload an image file');
+        return;
+      }
+      
+      setUploadedImage(file);
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewUrl(objectUrl);
+      
+      // Suggest a prompt based on the image
+      if (!prompt) {
+        setPrompt(`Create a 3D mockup similar to this reference image`);
+      }
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setUploadedImage(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   const examplePrompts = [
@@ -70,7 +116,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading, disabled
     { value: 'monochrome', label: 'Monochrome' },
   ];
 
-  const isButtonDisabled = isLoading || !prompt.trim() || disabled;
+  const isButtonDisabled = isLoading || (!prompt.trim() && !uploadedImage) || disabled;
 
   return (
     <div className="w-full glass rounded-lg p-6">
@@ -87,6 +133,68 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading, disabled
             className="min-h-[100px] resize-none"
             disabled={isLoading || disabled}
           />
+        </div>
+
+        {/* Image upload section */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium">
+              Upload reference image (optional)
+            </label>
+            <Input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="hidden"
+              disabled={isLoading || disabled}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={triggerFileInput}
+              disabled={isLoading || disabled}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Image
+            </Button>
+          </div>
+          
+          {previewUrl && (
+            <div className="relative mt-2 border rounded-md p-2 bg-background/30">
+              <div className="flex items-start gap-3">
+                <div className="relative w-24 h-24 overflow-hidden rounded-md bg-muted">
+                  <img 
+                    src={previewUrl} 
+                    alt="Reference image" 
+                    className="object-cover w-full h-full"
+                  />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Reference image will be used to guide the AI in creating a similar 3D mockup
+                  </p>
+                  <p className="text-xs font-medium truncate">
+                    {uploadedImage?.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {uploadedImage ? `${(uploadedImage.size / (1024 * 1024)).toFixed(2)} MB` : ''}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handleRemoveImage}
+                  disabled={isLoading}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {disabled && (
@@ -199,6 +307,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading, disabled
                     <li>Mention lighting conditions for realism</li>
                     <li>Specify angle (e.g., front view, 45° angle)</li>
                     <li>Include screen content details if applicable</li>
+                    <li>Upload a reference image for more accurate results</li>
                   </ul>
                 </div>
               </PopoverContent>
@@ -227,7 +336,7 @@ const PromptInput: React.FC<PromptInputProps> = ({ onSubmit, isLoading, disabled
               </>
             ) : (
               <>
-                <Send className="mr-2 h-4 w-4" />
+                <ImageIcon className="mr-2 h-4 w-4" />
                 Generate
               </>
             )}

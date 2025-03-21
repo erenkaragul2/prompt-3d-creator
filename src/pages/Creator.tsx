@@ -22,7 +22,7 @@ const Creator = () => {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const { profile, decrementCredits } = useAuth();
 
-  const handleGenerateImage = async (prompt: string, settings: PromptSettings) => {
+  const handleGenerateImage = async (prompt: string, settings: PromptSettings, image?: File) => {
     // Check if user has enough credits
     if (profile && profile.credits <= 0) {
       toast.error('You have no credits left. Please purchase more to continue.');
@@ -40,9 +40,32 @@ const Creator = () => {
         throw new Error('Failed to use credits');
       }
 
+      // Prepare form data if image is provided
+      let imageBase64 = null;
+      
+      if (image) {
+        const reader = new FileReader();
+        imageBase64 = await new Promise<string | null>((resolve) => {
+          reader.onload = (e) => {
+            const result = e.target?.result as string;
+            resolve(result);
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(image);
+        });
+        
+        if (!imageBase64) {
+          throw new Error('Failed to read image file');
+        }
+      }
+
       // Call our Supabase Edge Function to generate the mockup
       const { data, error } = await supabase.functions.invoke('generate-mockup', {
-        body: { prompt, settings }
+        body: { 
+          prompt, 
+          settings,
+          referenceImage: imageBase64
+        }
       });
 
       if (error) {
@@ -160,9 +183,9 @@ const Creator = () => {
                     </div>
                     
                     <div>
-                      <h4 className="text-sm font-medium mb-1">Describe the Context</h4>
+                      <h4 className="text-sm font-medium mb-1">Reference Images Help</h4>
                       <p className="text-sm text-muted-foreground">
-                        Add details about where the product is being used or displayed.
+                        Upload a reference image to guide the AI in creating a similar mockup style.
                       </p>
                     </div>
                   </div>
