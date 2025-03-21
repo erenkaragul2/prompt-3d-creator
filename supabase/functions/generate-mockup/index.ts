@@ -68,9 +68,6 @@ serve(async (req) => {
           topP: 1,
           maxOutputTokens: 4096,
           responseMediaType: "image/png",
-          responseFormat: {
-            format: "media"
-          }
         }
       }),
     });
@@ -90,6 +87,9 @@ serve(async (req) => {
     let imageUrl = null;
     
     try {
+      // Log the full response structure for debugging
+      console.log("Response structure:", JSON.stringify(data, null, 2));
+      
       // Look for media content in the response
       if (data.candidates && 
           data.candidates[0] && 
@@ -97,11 +97,15 @@ serve(async (req) => {
           data.candidates[0].content.parts) {
         
         const parts = data.candidates[0].content.parts;
+        console.log("Content parts:", JSON.stringify(parts, null, 2));
         
         for (const part of parts) {
           if (part.inlineData && part.inlineData.data) {
             imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            console.log("Found image data with MIME type:", part.inlineData.mimeType);
             break;
+          } else if (part.text) {
+            console.log("Found text in response:", part.text);
           }
         }
       }
