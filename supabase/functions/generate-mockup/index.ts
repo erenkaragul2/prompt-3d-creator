@@ -16,6 +16,26 @@ serve(async (req) => {
   }
 
   try {
+    // API Key validation
+    if (!GEMINI_API_KEY) {
+      console.error("GEMINI_API_KEY is not set");
+      return new Response(
+        JSON.stringify({ 
+          error: "API key is not configured",
+          imageUrl: `https://placehold.co/800x600/FF5555/FFFFFF?text=${encodeURIComponent("API key not found")}`,
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
+    console.log("API Key validation passed, the key exists");
+
     const { prompt, settings, referenceImage } = await req.json();
     
     console.log("Received prompt:", prompt);
@@ -61,8 +81,8 @@ serve(async (req) => {
         topK: 32,
         topP: 1,
         maxOutputTokens: 2048,
-        responseType: "IMAGE",
-        responseMediaType: "image"
+        responseMediaType: "IMAGE",
+        responseType: "IMAGE"
       }
     };
     
@@ -94,8 +114,13 @@ serve(async (req) => {
       }]
     }, null, 2));
 
+    // Show the first few characters of the API key for debugging (safely)
+    console.log("API key first 4 chars:", GEMINI_API_KEY ? GEMINI_API_KEY.substring(0, 4) + "..." : "null");
+
     // Call Gemini API to generate content
     const apiUrl = `${GEMINI_URL}?key=${GEMINI_API_KEY}`;
+    console.log("Calling Gemini API at URL (without key):", GEMINI_URL);
+    
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -106,10 +131,33 @@ serve(async (req) => {
 
     console.log("Response status:", response.status);
     
+    // Handle error responses
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Gemini API error:", errorText);
-      throw new Error(`Gemini API error ${response.status}: ${errorText.substring(0, 200)}`);
+      
+      // Try to parse the error response to get more details
+      let errorDetails = "Unknown error";
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorDetails = errorJson.error?.message || errorJson.error || errorText.substring(0, 200);
+      } catch (e) {
+        errorDetails = errorText.substring(0, 200);
+      }
+      
+      return new Response(
+        JSON.stringify({ 
+          error: `Gemini API error ${response.status}: ${errorDetails}`,
+          imageUrl: `https://placehold.co/800x600/FF5555/FFFFFF?text=${encodeURIComponent(`API Error: ${response.status}`)}`,
+          apiErrorDetails: errorDetails
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
     }
     
     // Parse the response as JSON
@@ -125,6 +173,7 @@ serve(async (req) => {
       console.log("Found candidates:", data.candidates.length);
       
       const candidate = data.candidates[0];
+      console.log("Candidate finish reason:", candidate.finishReason);
       
       if (candidate.content && candidate.content.parts) {
         console.log("Content parts count:", candidate.content.parts.length);
@@ -145,8 +194,21 @@ serve(async (req) => {
           }
         }
       }
+      
+      // Detailed logging of the entire candidate structure (without image data)
+      const candidateCopy = JSON.parse(JSON.stringify(candidate));
+      if (candidateCopy.content && candidateCopy.content.parts) {
+        candidateCopy.content.parts = candidateCopy.content.parts.map(part => {
+          if (part.inlineData) {
+            return {...part, inlineData: {...part.inlineData, data: "[REDACTED]"}};
+          }
+          return part;
+        });
+      }
+      console.log("Full candidate structure:", JSON.stringify(candidateCopy, null, 2));
     } else {
       console.log("No candidates found in response");
+      console.log("Full response:", JSON.stringify(data, null, 2));
     }
     
     // Handle case where no image was found
@@ -163,7 +225,8 @@ serve(async (req) => {
           imageUrl: `https://placehold.co/800x600/FF5555/FFFFFF?text=${encodeURIComponent(errorMessage)}`,
           originalPrompt: prompt,
           enhancedPrompt: enhancedPrompt,
-          responseStatus: response.status
+          responseStatus: response.status,
+          responseData: data // Include the full response data for debugging
         }),
         { 
           headers: { 
