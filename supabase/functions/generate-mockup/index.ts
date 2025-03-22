@@ -43,7 +43,7 @@ serve(async (req) => {
     console.log("Received reference image:", referenceImage ? "Yes" : "No");
 
     // Build the prompt with settings incorporated
-    let enhancedPrompt = `Create a photorealistic 3D mockup of the following: ${prompt}. `;
+    let enhancedPrompt = `Generate a high-quality photorealistic 3D mockup of: ${prompt}. `;
     
     // Add detail level
     if (settings.detailLevel) {
@@ -63,7 +63,7 @@ serve(async (req) => {
       enhancedPrompt += `Use a ${settings.colorScheme} color scheme. `;
     }
 
-    enhancedPrompt += `Create a high-quality 3D render without any text. High resolution, photorealistic.`;
+    enhancedPrompt += `Make this a photorealistic 3D render of high quality.`;
 
     console.log("Enhanced prompt:", enhancedPrompt);
     
@@ -77,12 +77,11 @@ serve(async (req) => {
         }
       ],
       generationConfig: {
-        temperature: 0.4,
+        temperature: 0.2,
         topK: 32,
-        topP: 1,
-        maxOutputTokens: 2048,
+        topP: 0.95,
+        maxOutputTokens: 4096,
         responseMediaType: "IMAGE",
-        responseType: "IMAGE"
       }
     };
     
@@ -103,9 +102,8 @@ serve(async (req) => {
       });
     }
     
-    // Log the request structure (without sensitive data)
     console.log("Sending request to Gemini API...");
-    console.log("Request payload structure:", JSON.stringify({
+    console.log("Request structure:", JSON.stringify({
       ...requestBody,
       contents: [{
         parts: requestBody.contents[0].parts.map(part => 
@@ -149,7 +147,18 @@ serve(async (req) => {
         JSON.stringify({ 
           error: `Gemini API error ${response.status}: ${errorDetails}`,
           imageUrl: `https://placehold.co/800x600/FF5555/FFFFFF?text=${encodeURIComponent(`API Error: ${response.status}`)}`,
-          apiErrorDetails: errorDetails
+          apiErrorDetails: errorDetails,
+          requestSent: {
+            url: GEMINI_URL,
+            body: {
+              ...requestBody,
+              contents: [{
+                parts: requestBody.contents[0].parts.map(part => 
+                  part.inlineData ? {...part, inlineData: {...part.inlineData, data: "[DATA_REDACTED]"}} : part
+                )
+              }]
+            }
+          }
         }),
         { 
           headers: { 
