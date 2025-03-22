@@ -47,7 +47,7 @@ serve(async (req) => {
 
     console.log("Enhanced prompt:", enhancedPrompt);
     
-    // Prepare the request body
+    // Prepare the request payload
     let requestBody = {
       contents: [
         {
@@ -63,6 +63,8 @@ serve(async (req) => {
         topK: 32,
         topP: 1,
         maxOutputTokens: 4096,
+        responseMediaType: "IMAGE", // Using uppercase as per Gemini docs
+        responseType: "IMAGE"       // Using uppercase as per Gemini docs
       }
     };
     
@@ -74,7 +76,7 @@ serve(async (req) => {
       const imageData = referenceImage.split(',')[1];
       const mimeType = referenceImage.split(';')[0].split(':')[1];
       
-      // Add the image to the first part of the request
+      // Add the image to the parts array
       requestBody.contents[0].parts.push({
         inlineData: {
           mimeType: mimeType,
@@ -83,19 +85,13 @@ serve(async (req) => {
       });
     }
     
-    // Add generation config for image output
-    requestBody = {
-      ...requestBody,
-      generationConfig: {
-        ...requestBody.generationConfig,
-        mediaType: "image"
-      }
-    };
-    
-    console.log("Request body structure prepared (without image data for logging)");
+    console.log("Sending request to Gemini API...");
 
     // Call Gemini API to generate content
-    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+    const apiUrl = `${GEMINI_URL}?key=${GEMINI_API_KEY}`;
+    console.log("API URL:", apiUrl);
+
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -104,51 +100,39 @@ serve(async (req) => {
     });
 
     console.log("Response status:", response.status);
+    const responseBody = await response.text();
+    console.log("Raw response body:", responseBody);
     
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API error:", errorText);
-      throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+      console.error("Gemini API error:", responseBody);
+      throw new Error(`Gemini API error: ${response.status} ${responseBody}`);
     }
 
-    const data = await response.json();
-    console.log("Gemini API response received");
+    // Parse the response JSON
+    const data = JSON.parse(responseBody);
+    console.log("Parsed response structure:", JSON.stringify(Object.keys(data)));
     
-    // Extract image data from response - updated extraction logic
+    // Extract image data from response
     let imageUrl = null;
     
     try {
-      console.log("Response structure keys:", Object.keys(data));
-      
-      // Navigate through the response structure to find the image data
       if (data.candidates && data.candidates.length > 0) {
-        console.log("Found candidates array with length:", data.candidates.length);
+        const candidate = data.candidates[0];
+        console.log("Candidate content parts:", JSON.stringify(candidate.content.parts.length));
         
-        const firstCandidate = data.candidates[0];
-        if (firstCandidate.content && firstCandidate.content.parts) {
-          console.log("Examining candidate parts:", firstCandidate.content.parts.length);
-          
-          for (const part of firstCandidate.content.parts) {
-            if (part.inlineData) {
-              console.log("Found inline data with mime type:", part.inlineData.mimeType);
-              imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-              break;
-            }
+        for (const part of candidate.content.parts) {
+          if (part.inlineData) {
+            console.log("Found inline data with mime type:", part.inlineData.mimeType);
+            imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            break;
           }
         }
       }
       
       if (!imageUrl) {
-        console.log("Could not find image in the standard response structure.");
-        console.log("Full response structure (without binary data):", JSON.stringify(data, (key, value) => {
-          // Avoid logging large binary data
-          if (key === 'data' && typeof value === 'string' && value.length > 100) {
-            return '[BINARY DATA]';
-          }
-          return value;
-        }, 2));
+        console.log("Could not find image in the response structure");
+        console.log("Full response structure (summarized):", JSON.stringify(data, null, 2));
       }
-      
     } catch (error) {
       console.error("Error extracting image from response:", error);
     }
