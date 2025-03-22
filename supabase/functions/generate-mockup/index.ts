@@ -43,18 +43,16 @@ serve(async (req) => {
       enhancedPrompt += `Use a ${settings.colorScheme} color scheme. `;
     }
 
-    enhancedPrompt += `Don't include any text, just generate the image. Output as detailed, photorealistic render.`;
+    enhancedPrompt += `Create a high-quality 3D render without any text. High resolution, photorealistic.`;
 
     console.log("Enhanced prompt:", enhancedPrompt);
     
-    // Prepare the request payload with proper configuration for image generation
-    let requestBody = {
+    // Prepare the request payload for image generation
+    const requestBody = {
       contents: [
         {
           parts: [
-            {
-              text: enhancedPrompt
-            }
+            { text: enhancedPrompt }
           ]
         }
       ],
@@ -62,9 +60,9 @@ serve(async (req) => {
         temperature: 0.4,
         topK: 32,
         topP: 1,
-        maxOutputTokens: 4096,
-        responseMediaType: "IMAGE",
-        responseType: "IMAGE"
+        maxOutputTokens: 2048,
+        responseType: "IMAGE",
+        responseMediaType: "image"
       }
     };
     
@@ -85,19 +83,19 @@ serve(async (req) => {
       });
     }
     
+    // Log the request structure (without sensitive data)
     console.log("Sending request to Gemini API...");
-    console.log("Request payload structure:", JSON.stringify(requestBody, (key, value) => {
-      // Don't log the actual image data, it's too large
-      if (key === 'data' && typeof value === 'string' && value.length > 100) {
-        return '[IMAGE DATA]';
-      }
-      return value;
-    }, 2));
+    console.log("Request payload structure:", JSON.stringify({
+      ...requestBody,
+      contents: [{
+        parts: requestBody.contents[0].parts.map(part => 
+          part.inlineData ? {...part, inlineData: {...part.inlineData, data: "[REDACTED]"}} : part
+        )
+      }]
+    }, null, 2));
 
     // Call Gemini API to generate content
     const apiUrl = `${GEMINI_URL}?key=${GEMINI_API_KEY}`;
-    console.log("API URL:", apiUrl);
-
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -108,73 +106,75 @@ serve(async (req) => {
 
     console.log("Response status:", response.status);
     
-    const responseText = await response.text();
-    console.log("Raw response body first 200 chars:", responseText.substring(0, 200) + "...");
-    
     if (!response.ok) {
-      console.error("Gemini API error:", responseText);
-      throw new Error(`Gemini API error: ${response.status} ${responseText.substring(0, 100)}...`);
-    }
-
-    // Parse the response JSON
-    const data = JSON.parse(responseText);
-    console.log("Response structure:", JSON.stringify(Object.keys(data)));
-    
-    if (data.candidates) {
-      console.log("Number of candidates:", data.candidates.length);
-      if (data.candidates.length > 0) {
-        console.log("First candidate content keys:", Object.keys(data.candidates[0].content || {}));
-        if (data.candidates[0].content && data.candidates[0].content.parts) {
-          console.log("Number of parts in first candidate:", data.candidates[0].content.parts.length);
-          console.log("Part types:", data.candidates[0].content.parts.map((p: any) => Object.keys(p).join(',')));
-        }
-      }
+      const errorText = await response.text();
+      console.error("Gemini API error:", errorText);
+      throw new Error(`Gemini API error ${response.status}: ${errorText.substring(0, 200)}`);
     }
     
-    // Extract image data from response with improved logging
+    // Parse the response as JSON
+    const data = await response.json();
+    console.log("Response structure keys:", Object.keys(data));
+    
+    // Extract image from response
     let imageUrl = null;
+    let mimeType = "image/png"; // Default mime type
     
-    try {
-      if (data.candidates && data.candidates.length > 0) {
-        const candidate = data.candidates[0];
-        if (candidate.content && candidate.content.parts) {
-          console.log("Examining candidate parts:", JSON.stringify(candidate.content.parts.map((p: any) => Object.keys(p))));
+    // Process candidates if available
+    if (data.candidates && data.candidates.length > 0) {
+      console.log("Found candidates:", data.candidates.length);
+      
+      const candidate = data.candidates[0];
+      
+      if (candidate.content && candidate.content.parts) {
+        console.log("Content parts count:", candidate.content.parts.length);
+        
+        for (const part of candidate.content.parts) {
+          console.log("Part type:", Object.keys(part).join(", "));
           
-          for (const part of candidate.content.parts) {
-            console.log("Part keys:", Object.keys(part));
-            if (part.inlineData) {
-              console.log("Found inline data with mime type:", part.inlineData.mimeType);
-              imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-              break;
-            }
+          if (part.text) {
+            console.log("Text content (first 100 chars):", part.text.substring(0, 100));
+          }
+          
+          // Check for inline data (image)
+          if (part.inlineData) {
+            console.log("Found inline data with mime type:", part.inlineData.mimeType);
+            mimeType = part.inlineData.mimeType;
+            imageUrl = `data:${mimeType};base64,${part.inlineData.data}`;
+            break;
           }
         }
       }
-      
-      if (!imageUrl) {
-        console.log("Could not find image in the response structure");
-        // Log a summary of the response structure to help debug
-        console.log("Response structure summary:", 
-          JSON.stringify(data, (key, value) => {
-            if (key === 'data' && typeof value === 'string' && value.length > 100) {
-              return '[BINARY DATA]';
-            }
-            return value;
-          }, 2).substring(0, 1000) + "..."
-        );
-      }
-    } catch (error) {
-      console.error("Error extracting image from response:", error);
+    } else {
+      console.log("No candidates found in response");
     }
     
-    // If we couldn't get an image, fall back to placeholder with detailed error
+    // Handle case where no image was found
     if (!imageUrl) {
-      console.log("No image found in response, using placeholder with error details");
-      const errorMessage = "AI generation failed. Response structure: " + 
-        JSON.stringify(Object.keys(data)).substring(0, 50);
-      imageUrl = `https://placehold.co/800x600/333/FFF?text=${encodeURIComponent(errorMessage)}`;
+      console.error("Could not extract image from response");
+      
+      // Create a clearer error message
+      const errorMessage = "Failed to generate image. Please try a different prompt or settings.";
+      
+      // Return error response with placeholder
+      return new Response(
+        JSON.stringify({ 
+          error: errorMessage,
+          imageUrl: `https://placehold.co/800x600/FF5555/FFFFFF?text=${encodeURIComponent(errorMessage)}`,
+          originalPrompt: prompt,
+          enhancedPrompt: enhancedPrompt,
+          responseStatus: response.status
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
     }
 
+    // Return successful response with image
     return new Response(
       JSON.stringify({ 
         imageUrl: imageUrl,
@@ -191,10 +191,15 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Error:", error);
+    
+    // Create a more descriptive error message
+    const errorMessage = `Error: ${error.message || "Unknown error occurred"}`;
+    
     return new Response(
       JSON.stringify({ 
-        error: error.message,
-        imageUrl: "https://placehold.co/800x600/333/FFF?text=Error:+"+encodeURIComponent(error.message.substring(0, 30))
+        error: errorMessage,
+        imageUrl: `https://placehold.co/800x600/FF5555/FFFFFF?text=${encodeURIComponent(error.message.substring(0, 50))}`,
+        errorDetails: error.stack
       }),
       { 
         status: 500, 
