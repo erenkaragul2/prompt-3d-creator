@@ -47,7 +47,7 @@ serve(async (req) => {
 
     console.log("Enhanced prompt:", enhancedPrompt);
     
-    // Prepare the request payload
+    // Prepare the request payload with proper configuration for image generation
     let requestBody = {
       contents: [
         {
@@ -63,8 +63,8 @@ serve(async (req) => {
         topK: 32,
         topP: 1,
         maxOutputTokens: 4096,
-        responseMediaType: "IMAGE", // Using uppercase as per Gemini docs
-        responseType: "IMAGE"       // Using uppercase as per Gemini docs
+        responseMediaType: "IMAGE",
+        responseType: "IMAGE"
       }
     };
     
@@ -86,6 +86,13 @@ serve(async (req) => {
     }
     
     console.log("Sending request to Gemini API...");
+    console.log("Request payload structure:", JSON.stringify(requestBody, (key, value) => {
+      // Don't log the actual image data, it's too large
+      if (key === 'data' && typeof value === 'string' && value.length > 100) {
+        return '[IMAGE DATA]';
+      }
+      return value;
+    }, 2));
 
     // Call Gemini API to generate content
     const apiUrl = `${GEMINI_URL}?key=${GEMINI_API_KEY}`;
@@ -100,54 +107,80 @@ serve(async (req) => {
     });
 
     console.log("Response status:", response.status);
-    const responseBody = await response.text();
-    console.log("Raw response body:", responseBody);
+    
+    const responseText = await response.text();
+    console.log("Raw response body first 200 chars:", responseText.substring(0, 200) + "...");
     
     if (!response.ok) {
-      console.error("Gemini API error:", responseBody);
-      throw new Error(`Gemini API error: ${response.status} ${responseBody}`);
+      console.error("Gemini API error:", responseText);
+      throw new Error(`Gemini API error: ${response.status} ${responseText.substring(0, 100)}...`);
     }
 
     // Parse the response JSON
-    const data = JSON.parse(responseBody);
-    console.log("Parsed response structure:", JSON.stringify(Object.keys(data)));
+    const data = JSON.parse(responseText);
+    console.log("Response structure:", JSON.stringify(Object.keys(data)));
     
-    // Extract image data from response
+    if (data.candidates) {
+      console.log("Number of candidates:", data.candidates.length);
+      if (data.candidates.length > 0) {
+        console.log("First candidate content keys:", Object.keys(data.candidates[0].content || {}));
+        if (data.candidates[0].content && data.candidates[0].content.parts) {
+          console.log("Number of parts in first candidate:", data.candidates[0].content.parts.length);
+          console.log("Part types:", data.candidates[0].content.parts.map((p: any) => Object.keys(p).join(',')));
+        }
+      }
+    }
+    
+    // Extract image data from response with improved logging
     let imageUrl = null;
     
     try {
       if (data.candidates && data.candidates.length > 0) {
         const candidate = data.candidates[0];
-        console.log("Candidate content parts:", JSON.stringify(candidate.content.parts.length));
-        
-        for (const part of candidate.content.parts) {
-          if (part.inlineData) {
-            console.log("Found inline data with mime type:", part.inlineData.mimeType);
-            imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            break;
+        if (candidate.content && candidate.content.parts) {
+          console.log("Examining candidate parts:", JSON.stringify(candidate.content.parts.map((p: any) => Object.keys(p))));
+          
+          for (const part of candidate.content.parts) {
+            console.log("Part keys:", Object.keys(part));
+            if (part.inlineData) {
+              console.log("Found inline data with mime type:", part.inlineData.mimeType);
+              imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+              break;
+            }
           }
         }
       }
       
       if (!imageUrl) {
         console.log("Could not find image in the response structure");
-        console.log("Full response structure (summarized):", JSON.stringify(data, null, 2));
+        // Log a summary of the response structure to help debug
+        console.log("Response structure summary:", 
+          JSON.stringify(data, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 100) {
+              return '[BINARY DATA]';
+            }
+            return value;
+          }, 2).substring(0, 1000) + "..."
+        );
       }
     } catch (error) {
       console.error("Error extracting image from response:", error);
     }
     
-    // If we couldn't get an image, fall back to placeholder
+    // If we couldn't get an image, fall back to placeholder with detailed error
     if (!imageUrl) {
-      console.log("No image found in response, using placeholder");
-      imageUrl = "https://placehold.co/800x600/333/FFF?text=AI+Mockup+Failed";
+      console.log("No image found in response, using placeholder with error details");
+      const errorMessage = "AI generation failed. Response structure: " + 
+        JSON.stringify(Object.keys(data)).substring(0, 50);
+      imageUrl = `https://placehold.co/800x600/333/FFF?text=${encodeURIComponent(errorMessage)}`;
     }
 
     return new Response(
       JSON.stringify({ 
         imageUrl: imageUrl,
         originalPrompt: prompt,
-        enhancedPrompt: enhancedPrompt 
+        enhancedPrompt: enhancedPrompt,
+        responseStatus: response.status
       }),
       { 
         headers: { 
@@ -161,7 +194,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        imageUrl: "https://placehold.co/800x600/333/FFF?text=Error:+"+error.message.substring(0, 30)
+        imageUrl: "https://placehold.co/800x600/333/FFF?text=Error:+"+encodeURIComponent(error.message.substring(0, 30))
       }),
       { 
         status: 500, 
