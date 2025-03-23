@@ -43,27 +43,27 @@ serve(async (req) => {
     console.log("Received reference image:", referenceImage ? "Yes" : "No");
 
     // Build the prompt with settings incorporated
-    let enhancedPrompt = `Generate a high-quality photorealistic 3D mockup of: ${prompt}. `;
+    let enhancedPrompt = `Create a photorealistic 3D mockup of the following: ${prompt}`;
     
     // Add detail level
     if (settings.detailLevel) {
       const detailDescription = settings.detailLevel > 75 ? "highly detailed" : 
                                settings.detailLevel > 50 ? "moderately detailed" : 
                                settings.detailLevel > 25 ? "somewhat detailed" : "minimally detailed";
-      enhancedPrompt += `Make it ${detailDescription}. `;
+      enhancedPrompt += `. Make it ${detailDescription}`;
     }
     
     // Add style preference
     if (settings.stylePreference) {
-      enhancedPrompt += `Use a ${settings.stylePreference} style. `;
+      enhancedPrompt += `. Use a ${settings.stylePreference} style`;
     }
     
     // Add color scheme
     if (settings.colorScheme) {
-      enhancedPrompt += `Use a ${settings.colorScheme} color scheme. `;
+      enhancedPrompt += `. Use a ${settings.colorScheme} color scheme`;
     }
 
-    enhancedPrompt += `Make this a photorealistic 3D render of high quality.`;
+    enhancedPrompt += `. High quality 3D render, photorealistic.`;
 
     console.log("Enhanced prompt:", enhancedPrompt);
     
@@ -77,11 +77,8 @@ serve(async (req) => {
         }
       ],
       generationConfig: {
-        temperature: 0.2,
-        topK: 32,
-        topP: 0.95,
-        maxOutputTokens: 4096,
-        responseMediaType: "IMAGE",
+        temperature: 0.1,
+        maxOutputTokens: 2048,
       }
     };
     
@@ -136,18 +133,23 @@ serve(async (req) => {
       
       // Try to parse the error response to get more details
       let errorDetails = "Unknown error";
+      let errorJson = null;
       try {
-        const errorJson = JSON.parse(errorText);
+        errorJson = JSON.parse(errorText);
         errorDetails = errorJson.error?.message || errorJson.error || errorText.substring(0, 200);
       } catch (e) {
         errorDetails = errorText.substring(0, 200);
       }
+
+      console.log("Full error response:", errorText);
+      console.log("API URL used:", GEMINI_URL);
       
       return new Response(
         JSON.stringify({ 
           error: `Gemini API error ${response.status}: ${errorDetails}`,
           imageUrl: `https://placehold.co/800x600/FF5555/FFFFFF?text=${encodeURIComponent(`API Error: ${response.status}`)}`,
           apiErrorDetails: errorDetails,
+          fullErrorResponse: errorJson || errorText,
           requestSent: {
             url: GEMINI_URL,
             body: {
@@ -172,6 +174,7 @@ serve(async (req) => {
     // Parse the response as JSON
     const data = await response.json();
     console.log("Response structure keys:", Object.keys(data));
+    console.log("Full response from Gemini API:", JSON.stringify(data, null, 2));
     
     // Extract image from response
     let imageUrl = null;
