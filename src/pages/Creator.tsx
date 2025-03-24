@@ -20,6 +20,7 @@ const Creator = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
   const { profile, decrementCredits } = useAuth();
 
   const handleGenerateImage = async (prompt: string, settings: PromptSettings, image?: File) => {
@@ -69,10 +70,20 @@ const Creator = () => {
       });
 
       if (error) {
+        console.error("Error from Edge Function:", error);
         throw new Error(`Error calling generate-mockup: ${error.message}`);
       }
 
-      if (!data || !data.imageUrl) {
+      if (!data) {
+        throw new Error('No data returned from the API');
+      }
+      
+      if (data.error) {
+        console.error("API Error:", data.error);
+        throw new Error(data.error);
+      }
+
+      if (!data.imageUrl) {
         throw new Error('No image URL returned from the API');
       }
 
@@ -84,7 +95,23 @@ const Creator = () => {
       
     } catch (error) {
       console.error('Error generating image:', error);
-      toast.error('Failed to generate mockup. Please try again.');
+      
+      // Show a more helpful error message and suggestion to try again
+      let errorMessage = 'Failed to generate mockup.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('400')) {
+          errorMessage = 'The AI service could not process your request. Try a different prompt or simplify your description.';
+        } else if (error.message.includes('429')) {
+          errorMessage = 'Too many requests to the AI service. Please try again in a moment.';
+        } else if (error.message.includes('500')) {
+          errorMessage = 'The AI service encountered an error. Please try again later.';
+        } else {
+          errorMessage = `Error: ${error.message}`;
+        }
+      }
+      
+      toast.error(errorMessage);
       
       // Try to restore the credit if generation failed
       if (profile) {
@@ -112,6 +139,7 @@ const Creator = () => {
       }
     } finally {
       setIsLoading(false);
+      setRetryCount(prev => prev + 1);
     }
   };
 
@@ -162,6 +190,7 @@ const Creator = () => {
                   onSubmit={handleGenerateImage} 
                   isLoading={isLoading}
                   disabled={profile?.credits === 0}
+                  key={`prompt-input-${retryCount}`}
                 />
                 
                 <div className="mt-8 glass rounded-lg p-6">

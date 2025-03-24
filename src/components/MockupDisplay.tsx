@@ -8,7 +8,8 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  Copy
+  Copy,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -28,8 +29,14 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
   const [rotation, setRotation] = useState(0);
   const [scale, setScale] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Reset error state when new image is loaded
+  useEffect(() => {
+    setImageError(false);
+  }, [imageUrl]);
 
   const handleRotate = () => {
     setRotation((prev) => (prev + 90) % 360);
@@ -94,6 +101,11 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
     }
   };
 
+  const handleImageError = () => {
+    console.error("Image failed to load:", imageUrl);
+    setImageError(true);
+  };
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -125,7 +137,7 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
               variant="ghost" 
               size="icon" 
               onClick={handleRotate} 
-              disabled={isLoading || !imageUrl}
+              disabled={isLoading || !imageUrl || imageError}
             >
               <RotateCw className="h-4 w-4" />
             </Button>
@@ -133,7 +145,7 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
               variant="ghost" 
               size="icon" 
               onClick={handleZoomOut} 
-              disabled={isLoading || !imageUrl || scale <= 0.5}
+              disabled={isLoading || !imageUrl || scale <= 0.5 || imageError}
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
@@ -141,7 +153,7 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
               variant="ghost" 
               size="icon" 
               onClick={handleZoomIn} 
-              disabled={isLoading || !imageUrl || scale >= 2}
+              disabled={isLoading || !imageUrl || scale >= 2 || imageError}
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
@@ -149,7 +161,7 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
               variant="ghost" 
               size="icon" 
               onClick={toggleFullscreen} 
-              disabled={isLoading || !imageUrl}
+              disabled={isLoading || !imageUrl || imageError}
             >
               <Maximize2 className="h-4 w-4" />
             </Button>
@@ -163,7 +175,7 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
               <LoadingAnimation />
               <p className="text-sm text-muted-foreground mt-4">Generating your 3D mockup...</p>
             </div>
-          ) : imageUrl ? (
+          ) : imageUrl && !imageError ? (
             <img
               ref={imageRef}
               src={imageUrl}
@@ -172,7 +184,16 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
               style={{
                 transform: `rotate(${rotation}deg) scale(${scale})`,
               }}
+              onError={handleImageError}
             />
+          ) : imageError ? (
+            <div className="text-center p-8 flex flex-col items-center">
+              <div className="mb-4 text-destructive">
+                <RefreshCw className="h-12 w-12 mx-auto mb-2" />
+                <p className="text-lg font-semibold">Image generation failed</p>
+              </div>
+              <p className="text-muted-foreground mb-4">The API was unable to generate an image. Please try again with a different prompt.</p>
+            </div>
           ) : (
             <div className="text-center p-8">
               <p className="text-muted-foreground">Enter a prompt and click Generate to create your 3D mockup</p>
@@ -181,7 +202,7 @@ const MockupDisplay: React.FC<MockupDisplayProps> = ({
         </div>
         
         {/* Action bar */}
-        {imageUrl && !isLoading && (
+        {imageUrl && !isLoading && !imageError && (
           <div className="flex items-center justify-between p-4 border-t">
             <Button 
               variant="outline" 
